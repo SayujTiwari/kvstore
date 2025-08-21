@@ -41,7 +41,7 @@ func main() {
 		addr = a
 	}
 
-	clients := 200
+	clients := 200 // number of concurrent clients
 	itersPerClient := 1000
 
 	start := time.Now()

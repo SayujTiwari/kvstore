@@ -65,3 +65,33 @@ func (s *Store) Del(k string) bool {
 	}
 	return false
 }
+
+// ForEach calls fn for every key/value.
+// Safe with sharded maps; acquires a read lock per shard.
+func (s *Store) ForEach(fn func(k, v string)) {
+	for i := range s.shards {
+		sh := &s.shards[i]
+		sh.mu.RLock()
+		for k, v := range sh.m {
+			fn(k, v)
+		}
+		sh.mu.RUnlock()
+	}
+}
+
+// Export streams all key/values to an encoder, avoiding large allocations.
+// makeEntry should convert (k,v) to a serializable value (e.g., an Entry struct).
+// enc must have an Encode(any) error method (e.g., *json.Encoder).
+func (s *Store) Export(
+	makeEntry func(k, v string) any,
+	enc interface{ Encode(v any) error },
+) error {
+	var err error
+	s.ForEach(func(k, v string) {
+		if err != nil {
+			return
+		}
+		err = enc.Encode(makeEntry(k, v))
+	})
+	return err
+}
