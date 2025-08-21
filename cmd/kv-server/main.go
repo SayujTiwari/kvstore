@@ -14,6 +14,26 @@ import (
 	"github.com/SayujTiwari/kvstore/internal/store"
 )
 
+func getenvBool(k string, def bool) bool {
+	v := strings.ToLower(os.Getenv(k))
+	if v == "" {
+		return def
+	}
+	return v == "1" || v == "true" || v == "on" || v == "yes"
+}
+func getenvOneOf(k, def string, allowed ...string) string {
+	v := strings.ToLower(os.Getenv(k))
+	if v == "" {
+		return def
+	}
+	for _, a := range allowed {
+		if v == a {
+			return v
+		}
+	}
+	return def
+}
+
 func handleConn(c net.Conn, st *store.Store, logAOF *aof.Logger) {
 	defer c.Close()
 	r := bufio.NewReader(c)
@@ -71,42 +91,54 @@ func handleConn(c net.Conn, st *store.Store, logAOF *aof.Logger) {
 }
 
 func main() {
-	addr := ":6380"
-	if v := os.Getenv("KV_ADDR"); v != "" {
-		addr = v
-	}
+	// --- config via env ---
+	addr := getenvOneOf("KV_ADDR", ":6380") // host:port
+	useAOF := getenvBool("KV_AOF", true)    // on/off
+	useSnap := getenvBool("KV_SNAPSHOT", true)
+	fsyncMode := getenvOneOf("KV_FSYNC", "everysec", "always", "everysec", "off")
 
-	// --- initialize state & durability ---
 	st := store.New()
-
 	const aofPath = "data.aof"
 	const snapPath = "data.snap"
 
-	// Load snapshot first (fast), then replay AOF tail.
-	if err := snapshot.Load(snapPath, st); err != nil {
-		log.Fatal("snapshot load:", err)
-	}
-	if err := aof.Replay(aofPath, st); err != nil {
-		log.Fatal("replay:", err)
-	}
-
-	// Open AOF logger (fsync every second).
-	logAOF, err := aof.New(aofPath, aof.FsyncEverySec)
-	if err != nil {
-		log.Fatal("aof:", err)
-	}
-	defer logAOF.Close()
-
-	// Background snapshot every 30s.
-	go func() {
-		for {
-			time.Sleep(30 * time.Second)
-			if err := snapshot.Save(snapPath, st); err != nil {
-				log.Println("snapshot save:", err)
-			}
-			// (Optional) later: safe AOF rotation here.
+	// Load snapshot first (if enabled), then AOF.
+	if useSnap {
+		if err := snapshot.Load(snapPath, st); err != nil {
+			log.Fatal("snapshot load:", err)
 		}
-	}()
+	}
+	if useAOF {
+		if err := aof.Replay(aofPath, st); err != nil {
+			log.Fatal("replay:", err)
+		}
+	}
+
+	// Open AOF logger if enabled
+	var logAOF *aof.Logger
+	if useAOF {
+		pol := aof.FsyncEverySec
+		if fsyncMode == "always" {
+			pol = aof.FsyncAlways
+		}
+		var err error
+		logAOF, err = aof.New(aofPath, pol)
+		if err != nil {
+			log.Fatal("aof:", err)
+		}
+		defer logAOF.Close()
+	}
+
+	// Background snapshots (if enabled)
+	if useSnap {
+		go func() {
+			for {
+				time.Sleep(30 * time.Second)
+				if err := snapshot.Save(snapPath, st); err != nil {
+					log.Println("snapshot save:", err)
+				}
+			}
+		}()
+	}
 
 	// --- network server ---
 	ln, err := net.Listen("tcp", addr)
