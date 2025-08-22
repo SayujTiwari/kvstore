@@ -41,8 +41,8 @@ func main() {
 		addr = a
 	}
 
-	clients := 200 // number of concurrent clients
-	itersPerClient := 2000
+	clients := 100 // number of concurrent clients
+	itersPerClient := 10000
 
 	start := time.Now()
 	var wg sync.WaitGroup

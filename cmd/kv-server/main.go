@@ -135,6 +135,13 @@ func main() {
 				time.Sleep(30 * time.Second)
 				if err := snapshot.Save(snapPath, st); err != nil {
 					log.Println("snapshot save:", err)
+					continue
+				}
+				// compact the AOF so restart only replays a tiny tail
+				if useAOF && logAOF != nil {
+					if err := logAOF.Rotate(); err != nil {
+						log.Println("aof rotate:", err)
+					}
 				}
 			}
 		}()
