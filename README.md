@@ -3,9 +3,6 @@
 A tiny, Redis-style in-memory key–value database built in Go.  
 It focuses on **speed**, **concurrency**, and **crash recovery** (AOF + binary snapshots) to showcase real systems concepts you’d use on infra teams.
 
-## Why
-Most student projects are CRUD apps. `kvstore` is an **infrastructure** project: it teaches sharding, synchronization, durability, and performance measurement—the skills big-tech SWE teams care about.
-
 ## What it does
 - Accepts simple text commands over TCP (one command per line):  
   `PING`, `SET key value`, `GET key`, `DEL key`
